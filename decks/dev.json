@@ -1,0 +1,42 @@
+{
+    "werewolf": {
+        "count":2,
+        "order":9999,
+        "readsCenterCardState": true,
+        "nightSteps":[
+            {"type":"select","target":"anyPlayer","flavor":"Choose a player to view and swap with."},
+            {"type":"selectAnyCenterCard","flavor":"You are a lone wolf.\nSelect Any Center Card to view."},
+            {"type":"viewFirstTargetCard","flavor":"A $TARGET_CARD."}
+        ]
+    },
+    "robber": {
+        "count":1,
+        "order":22,
+        "affectsPlayerCardState": true,
+        "nightSteps":[
+            {"type":"select","target":"anyPlayer","flavor":"Choose a player to view and swap with."},
+            {"type":"viewFirstTargetCard","flavor":"$TARGET_PLAYER had the $TARGET_CARD card."},
+            {"type":"swapSelfAndFirstTarget","flavor":"Now you have the $TARGET_CARD card, and $TARGET_PLAYER has your card."}
+        ]
+    },
+    "troublemaker": {
+        "count":1,
+        "order":5,
+        "affectsPlayerCardState": true,
+        "nightSteps":[
+            {"type":"select","target":"anyPlayer","flavor":"Choose a player to view and swap with."},
+            {"type":"viewFirstTargetCard","flavor":"$TARGET_PLAYER had the $TARGET_CARD card."},
+            {"type":"swapSelfAndFirstTarget","flavor":"Now you have the $TARGET_CARD card, and $TARGET_PLAYER has your card."}
+        ]
+    },
+    "seer": {
+        "count":1,
+        "order":8,
+        "readsPlayerCardState": true,
+        "nightSteps":[
+            {"type":"select","target":"anyPlayer","flavor":"Choose a player to view and swap with."},
+            {"type":"viewTargetCards","flavor":"$TARGET_PLAYER had the $TARGET_CARD card."},
+            {"type":"swapSelfAndFirstTarget","flavor":"Now you have the $TARGET_CARD card, and $TARGET_PLAYER has your card."}
+        ]
+    }
+}

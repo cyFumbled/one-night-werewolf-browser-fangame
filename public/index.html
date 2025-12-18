@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>One Night Werewolf Browser Fangame</title>
+    <!--
+        Favicon from OpenMoji and licensed under CC BY-SA 4.0!
+        https://openmoji.org/library/emoji-1F4A4/
+        https://creativecommons.org/licenses/by-sa/4.0/#
+    -->
+    <link rel="icon" type="image/x-icon" href="../zzz.svg">
+</head>
+<body style="margin:0; background-color:rgb(22, 95, 98)">
+    <div id="chat" style="width:100vw; justify-content: flex-end; height: 98vh; display: flex; flex-direction: column;
+    max-height:100vh; position:absolute; bottom:64px; overflow-y:scroll; color:rgb(192, 192, 192);"></div>
+    <div style="position:absolute; bottom:12px; left:12px; padding:6px; background-color:grey;">
+        <form class="inputWrapper" style="display:inline;">
+            <input id="messageInput" name="message" type="text">
+            <button>Send</button>
+        </form>
+        <button id="readyToggle" onclick="toggleReady()">Toggle Ready</button>
+    </div>
+    
+    <div style="position:absolute; bottom:12px; right:12px; padding:6px; background-color:grey;">
+        <form class="inputWrapper" style="display:inline;">
+            <input id="nicknameInput" name="nicknameInput" type="text">
+            <button>Submit</button>
+        </form>
+    </div>
+
+    <script>
+        const ws = new WebSocket(`ws:${location.hostname}:8080`);
+        const chat = document.getElementById('chat');
+
+        ws.onmessage = (event) => {
+            chat.innerHTML += 
+                `<div style="display:inline-block;color:rgb(255, 255, 255);
+                margin:4px; padding:4px; border:2px solid black;">
+                    Server: ${event.data}
+                </div><br>`;
+        };
+        
+        function changeNickname() {
+            let nicknameInput = document.getElementById("nicknameInput");
+            const nicknameSubmission = nicknameInput.value.replaceAll('"',"'");
+            ws.send(`{"type": "nicknameSubmission", "content": "${nicknameSubmission}"}`);
+            chat.innerHTML += `<div>Submitted a nickname change request to ${nicknameSubmission}</div>`;
+            nicknameInput.value = '';
+        }
+
+        function sendMessage() {
+            const messageInput = document.getElementById('messageInput');
+            const message = messageInput.value.replaceAll('"',"'");
+            ws.send(`{"type": "chatMessage", "content": "${message}"}`);
+            chat.innerHTML += `<div>You: ${message}</div>`;
+            messageInput.value = '';
+        }
+
+        let readyState = false;
+        function toggleReady() {
+            readyState = !readyState;
+            ws.send(`{"type": "readyState","content": ${readyState}}`);
+            chat.innerHTML += readyState ? '<div>You\'re Ready!</div>' : '<div> you\'re no longer ready.';
+            
+            // removed cause its ugly with default styling
+            //document.getElementById("readyToggle").style.backgroundColor = readyState ? "cyan" : "white";
+        }
+
+        for (const form of document.querySelectorAll('.inputWrapper')) {
+            console.log(form)
+            form?.addEventListener('submit', e => {
+                e.preventDefault();
+                const INPUT = e.target.querySelector('input');
+                if (INPUT.value === "") return;
+                if (INPUT.id === 'messageInput') sendMessage(INPUT.value);
+                else if (INPUT.id = 'nicknameInput') changeNickname(INPUT.value);
+            })
+        };
+
+    </script>
+</body>
+</html>
