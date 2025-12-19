@@ -8,11 +8,13 @@ const WSHost = '0.0.0.0';
 const WSPort = 8080;
 const DEBUG_LEVEL = 3 // 0, 1, 2, or 3
 console.log(`Debug level: ${DEBUG_LEVEL}`)
-app.use(express.static('public'));
+app.use(express.static('public'))
 
 app.listen(httpPort, () => {
     console.log(`Https Server running on ${httpHost}:${httpPort}`);
 });
+
+
 
 const wss = new WebSocket.Server({port: 8080,host: '0.0.0.0'});
 if (DEBUG_LEVEL > 0) console.log(`Websocket Server running on ${WSHost}:${WSPort}`)
@@ -199,10 +201,16 @@ function startGame (playerIps, deckHashy) {
     }
     shuffledDeck = null;
 
+
+
+
     // NIGHT PHASE
     console.log('\n## NIGHT PHASE')
 
     let responseLog = {};
+    let roleCompletionStatus = {};
+    let selection = {};
+
     for (let i = 0; i < deckOrder.length; i++) {
         const CARD = deckOrder[i];
         if (DEBUG_LEVEL > 1) console.log(`going through the night actions of ${CARD}...`)
@@ -210,13 +218,31 @@ function startGame (playerIps, deckHashy) {
             if (DEBUG_LEVEL > 1) console.log(`${CARD} isn't active.`)
             continue
         };
-        if (roleHashy[CARD] === undefined) continue;
+        if (roleHashy[CARD] === undefined) {
+
+            console.log('Role is not in play. Continuing...')
+            continue;}
         
         const ws = ipWsMap[playerHashy[roleHashy[CARD]].ip];
         ws.send(`You are ${deckHashy[CARD].count > 1 ? 'a' : 'the'} ${CARD}`);
 
         // this took 8 hours for me to properly code and i still barely get it. so ashamed
-        async function selectAnyPlayersCard(ip,targets,step) { // targets = {'1':true,'2':true}
+        // add another 8 hours cause i didnt understand shit
+        async function selectFromTargets(ip,targets,stateDependencies,step) { // targets = {'1':true,'2':true}
+            // center, were-center, player-cards, all-cards, tokens
+            const DEPEND_DATA = stateActionDependencies[playerIps[ip]];
+            for (let dependency of stateDependencies) {
+                console.log(`checking dependency ${dependency} of ${playerHashy[playerIps[ip]].role}...`)
+                if (DEPEND_DATA[dependency] === -1) {
+                    console.log(`dependency clear.`)
+                    continue;
+                }
+                while (!roleCompletionStatus[DEPEND_DATA[dependency]]) {
+                    if (DEBUG_LEVEL > 2) console.log(`Waiting on ${DEPEND_DATA[dependency]} for ${dependency}...`)
+                    await new Promise(res => setTimeout(res, 1000))
+                }
+                console.log(`dependency clear.`)
+            }
             function callbackNest (event) {
                 selectPlayerWebsocketEvent(event,targets)
             }
@@ -225,7 +251,11 @@ function startGame (playerIps, deckHashy) {
                 console.log('Selection event caught message: ' + MESSAGE)
                 if (targetHashmap[MESSAGE] !== undefined) {
                     responseLog[playerIps[ip]] = MESSAGE;
-                    ipWsMap[ip].send(`${playerNicknames[playerHashy[MESSAGE].ip]} (${MESSAGE}) selected.`)
+                    ipWsMap[ip].send(
+                        `${centerCards[MESSAGE] === undefined ?
+                        `${playerHashy[MESSAGE].ip} (${MESSAGE})`:
+                        MESSAGE} selected.`
+                    )
                     ipWsMap[ip].removeEventListener("message",callbackNest)
                 } else {
                     ipWsMap[ip].send("invalid response. please try again")
@@ -233,46 +263,72 @@ function startGame (playerIps, deckHashy) {
             }
             ipWsMap[ip].send(step.flavor || `please type any of the following values: ${Object.keys(targets)}`)
             ipWsMap[ip].addEventListener("message",callbackNest)
-            FUCKTHISSHIT = new Promise((resolve) => {
-                async function stallTillResponse() {
-                    console.log(`Awaiting response from ${ip} ...`)
-                    while (!targets[responseLog[playerIps[ip]]]) {
-                        if (DEBUG_LEVEL > 2) console.log(`No response detected from ${ip} .`)
-                        await new Promise(res => setTimeout(res, 1000))
-                    }
-                    if (DEBUG_LEVEL > 1) console.log(`Valid response detected from ${ip}. Removing event listener and returning...`)
-                    return responseLog[playerIps[ip]]
-                }
-                resolve(stallTillResponse().then((target)=>{console.log('Resolving..');return target;}))
-            })
-            FUCKTHISSHIT.then((target)=>{
-                if (DEBUG_LEVEL > 0) console.log(`${ip} Resolved with target #${target}.`)
-            })
+            console.log(`Awaiting response from ${ip} ...`)
+            while (!targets[responseLog[playerIps[ip]]]) {
+                if (DEBUG_LEVEL > 2) console.log(`No response detected from ${ip}`)
+                await new Promise(res => setTimeout(res, 1000))
+            }
+            if (selection[playerIps[ip]] === undefined) {
+                selection[playerIps[ip]] = [responseLog[playerIps[ip]]];
+            }
+            selection[playerIps[ip]].push(responseLog[playerIps[ip]])
+            if (DEBUG_LEVEL > 1) console.log(`Valid response detected from ${ip}. Removing event listener and returning...`)
+            if (DEBUG_LEVEL > 0) console.log(`${ip} completed step with target ${
+                centerCards[responseLog[playerIps[ip]]] === undefined ?
+                `#${playerHashy[responseLog[playerIps[ip]]].ip}` :
+                `${responseLog[playerIps[ip]]} (center cards)`}.`)
+            responseLog[playerIps[ip]] = undefined;
         }
-        
-        
-        const STEPS = deckHashy[CARD].nightSteps;
-        for (let stepIndex = 0; stepIndex < STEPS.length; stepIndex++) {
-            const STEP = STEPS[stepIndex]
-            switch (STEP.type) {
-                case 'select':
-                    switch (STEP.target) {
-                        case 'anyPlayer':
-                            selectAnyPlayersCard(playerHashy[roleHashy[CARD]].ip,{1:true,2:true},STEP)
-                            break;
-                        default:
-                            console.log(`defaulted on target "${STEP.type}.${STEP.target}"`)
-                            break;
-                    }
-                    break;
-                default: 
-                    console.log(`defaulted on step "${STEP.type}"`)
-                    break;
-            };
+
+        async function completeRole(CARD) {
+            const STEPS = deckHashy[CARD].nightSteps;
+            async function completeStep(stepIndex) {
+                const STEP = STEPS[stepIndex]
+                console.log(STEPS[stepIndex])
+                switch (STEP.type) {
+                    case 'select':
+                        switch (STEP.target) {
+                            case 'anyPlayer':
+                                console.log('selecting anyplayer')
+                                    await selectFromTargets(
+                                        playerHashy[roleHashy[CARD]].ip,
+                                        {1:true,2:true},
+                                        ['playerCards'],
+                                        STEP
+                                    )
+                                break;
+                            case 'anyCenterCard':
+                                    await selectFromTargets(
+                                        playerHashy[roleHashy[CARD]].ip,
+                                        centerCards,
+                                        ['centerCards'],
+                                        STEP
+                                    )
+                                break;
+                            default:
+                                console.log(`defaulted on target "${STEP.type}.${STEP.target}"`)
+                                break;
+                        }
+                        break;
+                    default: 
+                        console.log(`defaulted on step "${STEP.type}"`)
+                        break;
+                };
+                console.log('step completed')
+                if (stepIndex >= STEPS.length - 1) {
+                    console.log('finished.')
+                    return
+                }
+                console.log(`current selection: ${JSON.stringify(selection).replaceAll('"',"")}`)
+                completeStep(++stepIndex)
+            }
+            await completeStep(0)
+            roleCompletionStatus[deckOrder.indexOf(CARD)] = true;
+            console.log(`${CARD} is complete.`);
         };
-        
-        console.log('all steps sent out. good luck')
-    };
+    completeRole(CARD)
+};
+    
 };
 
 wss.on('connection', (ws,req) => {

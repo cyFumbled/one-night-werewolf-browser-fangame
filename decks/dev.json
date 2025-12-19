@@ -4,9 +4,8 @@
         "order":9999,
         "readsCenterCardState": true,
         "nightSteps":[
-            {"type":"select","target":"anyPlayer","flavor":"Choose a player to view and swap with."},
-            {"type":"selectAnyCenterCard","flavor":"You are a lone wolf.\nSelect Any Center Card to view."},
-            {"type":"viewFirstTargetCard","flavor":"A $TARGET_CARD."}
+            {"type":"select","target":"anyCenterCard","flavor":"You are a lone wolf.\nSelect Any Center Card to view."},
+            {"type":"viewSelection","flavor":"A $TARGET_CARD."}
         ]
     },
     "robber": {
@@ -15,8 +14,8 @@
         "affectsPlayerCardState": true,
         "nightSteps":[
             {"type":"select","target":"anyPlayer","flavor":"Choose a player to view and swap with."},
-            {"type":"viewFirstTargetCard","flavor":"$TARGET_PLAYER had the $TARGET_CARD card."},
-            {"type":"swapSelfAndFirstTarget","flavor":"Now you have the $TARGET_CARD card, and $TARGET_PLAYER has your card."}
+            {"type":"viewSelection","flavor":"$TARGET_PLAYER had the $TARGET_CARD card."},
+            {"type":"swapSelfAndSelectionOwner","flavor":"Now you have the $TARGET_CARD card, and $TARGET_PLAYER has your card."}
         ]
     },
     "troublemaker": {
@@ -24,9 +23,9 @@
         "order":5,
         "affectsPlayerCardState": true,
         "nightSteps":[
-            {"type":"select","target":"anyPlayer","flavor":"Choose a player to view and swap with."},
-            {"type":"viewFirstTargetCard","flavor":"$TARGET_PLAYER had the $TARGET_CARD card."},
-            {"type":"swapSelfAndFirstTarget","flavor":"Now you have the $TARGET_CARD card, and $TARGET_PLAYER has your card."}
+            {"type":"select","target":"anyPlayer","flavor":"Choose your first player to swap."},
+            {"type":"select","target":"anyPlayer","flavor":"Choose your second player to swap."},
+            {"type":"swapSelection","flavor":"Now you have the $TARGET_CARD card, and $TARGET_PLAYER has your card."}
         ]
     },
     "seer": {
