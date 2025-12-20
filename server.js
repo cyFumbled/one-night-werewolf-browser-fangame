@@ -42,7 +42,7 @@ let readyHashy = {};
 let playerNicknames = {};
 let gameInProgress = false;
 
-function startGame (playerIps, deckHashy) {
+async function startGame (playerIps, deckHashy) {
 
     // SETUP PHASE
     console.log('\n## SETUP PHASE')
@@ -163,12 +163,21 @@ function startGame (playerIps, deckHashy) {
     }
 
     if (DEBUG_LEVEL > 1) console.log('\n# Filling playerHashy (not a hashmap) with playerNumberId:{ip:ip,card:card,role:role}.');
-    
+    const DEBUG_ROLE = "werewolf";
     let playerHashy = {};
     for (let key in playerIps) {
         if (playerIps.hasOwnProperty(key)) {
             playerHashy[playerIps[key]] = {}; 
-            playerHashy[playerIps[key]].card = shuffledDeck.pop()
+            let card = ''; 
+            if (DEBUG_LEVEL !== undefined) {
+                console.log(`Debug role override to ${DEBUG_ROLE}`);
+                card = DEBUG_ROLE;
+                const index = shuffledDeck.indexOf(DEBUG_ROLE);
+                shuffledDeck.splice(index,1);
+            } else {
+                card = shuffledDeck.pop();
+            }
+            playerHashy[playerIps[key]].card = card
             playerHashy[playerIps[key]].role = playerHashy[playerIps[key]].card;
             playerHashy[playerIps[key]].ip = key;
         }
@@ -180,7 +189,6 @@ function startGame (playerIps, deckHashy) {
     }
 
     if (DEBUG_LEVEL > 1) console.log('\n# Filling rolehashy (role:[playerNumberId,...]) from PlayerHashy...');
-    
     let roleHashy = {};
     for (let key in playerHashy) {
         if (playerHashy.hasOwnProperty(key)) {
@@ -221,6 +229,7 @@ function startGame (playerIps, deckHashy) {
         if (roleHashy[CARD] === undefined) {
 
             console.log('Role is not in play. Continuing...')
+            roleCompletionStatus[deckOrder.indexOf(CARD)] = true;
             continue;}
         
         const ws = ipWsMap[playerHashy[roleHashy[CARD]].ip];
@@ -230,7 +239,7 @@ function startGame (playerIps, deckHashy) {
         // add another 8 hours cause i didnt understand shit
         async function selectFromTargets(ip,targets,stateDependencies,step) { // targets = {'1':true,'2':true}
             // center, were-center, player-cards, all-cards, tokens
-            const DEPEND_DATA = stateActionDependencies[playerIps[ip]];
+            const DEPEND_DATA = stateActionDependencies[deckOrder.indexOf(playerHashy[playerIps[ip]].role)];
             for (let dependency of stateDependencies) {
                 console.log(`checking dependency ${dependency} of ${playerHashy[playerIps[ip]].role}...`)
                 if (DEPEND_DATA[dependency] === -1) {
@@ -261,7 +270,7 @@ function startGame (playerIps, deckHashy) {
                     ipWsMap[ip].send("invalid response. please try again")
                 }
             }
-            ipWsMap[ip].send(step.flavor || `please type any of the following values: ${Object.keys(targets)}`)
+            //ipWsMap[ip].send(step.flavor || `please type any of the following values: ${Object.keys(targets)}`)
             ipWsMap[ip].addEventListener("message",callbackNest)
             console.log(`Awaiting response from ${ip} ...`)
             while (!targets[responseLog[playerIps[ip]]]) {
@@ -269,7 +278,7 @@ function startGame (playerIps, deckHashy) {
                 await new Promise(res => setTimeout(res, 1000))
             }
             if (selection[playerIps[ip]] === undefined) {
-                selection[playerIps[ip]] = [responseLog[playerIps[ip]]];
+                selection[playerIps[ip]] = [];
             }
             selection[playerIps[ip]].push(responseLog[playerIps[ip]])
             if (DEBUG_LEVEL > 1) console.log(`Valid response detected from ${ip}. Removing event listener and returning...`)
@@ -281,9 +290,30 @@ function startGame (playerIps, deckHashy) {
         }
 
         async function completeRole(CARD) {
+            const playerId = roleHashy[CARD][0];
             const STEPS = deckHashy[CARD].nightSteps;
             async function completeStep(stepIndex) {
                 const STEP = STEPS[stepIndex]
+                const ws = ipWsMap[playerHashy[playerId].ip]
+                let flavor = STEP.flavor;
+                if (selection[playerId] !== undefined) {
+                if (playerHashy[selection[playerId][0]] !== undefined) {
+                        if (playerHashy[selection[playerId][1]] !== undefined) {
+                            flavor = flavor.replaceAll("$TARGET_PLAYER_2",`${playerNicknames[playerHashy[selection[playerId][1]].ip]}`)
+                        }
+                        flavor = flavor
+                        .replaceAll("$TARGET_PLAYER_1",`${playerNicknames[playerHashy[selection[playerId][0]].ip]}`)
+                        .replaceAll("$TARGET_CARD",`${centerCards[selection[playerId][0]] === undefined ?
+                                    playerHashy[selection[playerId][0]].card : centerCards[selection[playerId][0]]}`)
+                        
+                        } else if (centerCards[selection[playerId][0]] !== undefined) {
+                            flavor = flavor
+                            .replaceAll("$TARGET_CARD",`${centerCards[selection[playerId][0]] === undefined ?
+                                        playerHashy[selection[playerId][0]].card : centerCards[selection[playerId][0]]}`)
+                    }
+                }
+                ws.send(flavor)
+                
                 console.log(STEPS[stepIndex])
                 switch (STEP.type) {
                     case 'select':
@@ -292,12 +322,12 @@ function startGame (playerIps, deckHashy) {
                                 console.log('selecting anyplayer')
                                     await selectFromTargets(
                                         playerHashy[roleHashy[CARD]].ip,
-                                        {1:true,2:true},
+                                        playerHashy, // only needs keys but as an obj
                                         ['playerCards'],
                                         STEP
                                     )
                                 break;
-                            case 'anyCenterCard':
+                            case 'anyCenter':
                                     await selectFromTargets(
                                         playerHashy[roleHashy[CARD]].ip,
                                         centerCards,
@@ -310,21 +340,58 @@ function startGame (playerIps, deckHashy) {
                                 break;
                         }
                         break;
+                        
+                    case 'viewSelection':
+                        console.log('...')
+                    break;
+                    case 'swapSelection' :
+                        async function awaitDependencies(stateDependencies){
+                        const DEPEND_DATA = stateActionDependencies[deckOrder.indexOf(playerHashy[playerId].role)];
+                        for (let dependency of stateDependencies) {
+                            console.log(`checking dependency ${dependency} of ${playerHashy[playerId].role}...`)
+                            if (DEPEND_DATA[dependency] === -1) {
+                                console.log(`dependency clear.`)
+                                continue;
+                            }
+                            while (!roleCompletionStatus[DEPEND_DATA[dependency]]) {
+                                if (DEBUG_LEVEL > 2) console.log(`Waiting on ${DEPEND_DATA[dependency]} for ${dependency}...`)
+                                await new Promise(res => setTimeout(res, 1000))
+                            }
+                            console.log(`dependency clear.`)
+                        }}
+                        switch (STEP.target) {
+                            case 'selection':
+                                await awaitDependencies(['centerCards','playerCards']);
+                                [playerHashy[selection[roleHashy[CARD]][0]].card,playerHashy[selection[roleHashy[CARD]][1]].card] = [playerHashy[selection[roleHashy[CARD]][1]].card,playerHashy[selection[roleHashy[CARD]][0]].card]
+                                console.log(`swapped ${selection[playerId][0]} with ${selection[playerId][1]}`)
+                                break;
+                            case 'self':
+                                await awaitDependencies(['centerCards','playerCards']);
+                                [playerHashy[selection[roleHashy[CARD]][0]].card,playerHashy[playerId].card] = [playerHashy[playerId].card,playerHashy[selection[roleHashy[CARD]][0]].card]
+                                console.log(`swapped ${selection[playerId][0]} with ${playerId}`)
+                                break;
+                            default:
+                                console.log(`defaulted on target "${STEP.type}.${STEP.target}"`)
+                                break;
+                        };
+                        break;
                     default: 
                         console.log(`defaulted on step "${STEP.type}"`)
                         break;
                 };
                 console.log('step completed')
+                
+                console.log(playerHashy)
                 if (stepIndex >= STEPS.length - 1) {
-                    console.log('finished.')
+                    console.log()
+                    roleCompletionStatus[deckOrder.indexOf(CARD)] = true;
+                    console.log(`${CARD} is complete.`);
                     return
                 }
                 console.log(`current selection: ${JSON.stringify(selection).replaceAll('"',"")}`)
                 completeStep(++stepIndex)
             }
-            await completeStep(0)
-            roleCompletionStatus[deckOrder.indexOf(CARD)] = true;
-            console.log(`${CARD} is complete.`);
+            completeStep(0)
         };
     completeRole(CARD)
 };
