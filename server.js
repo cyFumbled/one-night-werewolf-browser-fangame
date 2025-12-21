@@ -41,6 +41,7 @@ let numOfReadyPlayers = 0;
 let readyHashy = {};
 let playerNicknames = {};
 let gameInProgress = false;
+let teams = {}; // "werewolf":{"DEBUG_BUM":true}
 
 async function startGame (playerIps, deckHashy) {
 
@@ -70,27 +71,33 @@ async function startGame (playerIps, deckHashy) {
                 && deckHashy[key].order !== undefined 
                 && shuffledDeck.length < PLAYER_COUNT + 3;
 
-                if (DEBUG_LEVEL > 1){
-                    console.log(deckHashy[key].count > 0 
-                        && deckHashy[key].order !== undefined 
-                        && shuffledDeck.length < PLAYER_COUNT + 3 ?
-                        `Added ${key} to rolesActiveStatus.` :
-                        `${key}'s role is deemed not active.`
-                    );
-                    console.log(shuffledDeck.length >= PLAYER_COUNT + 3 ?
-                        'Shuffed deck is full, skipping this loop' :
-                        'Shuffed deck is not full, going on with this loop.'
-                    );
-                }
+            if (DEBUG_LEVEL > 1){
+                console.log(deckHashy[key].count > 0 
+                    && deckHashy[key].order !== undefined 
+                    && shuffledDeck.length < PLAYER_COUNT + 3 ?
+                    `Added ${key} to rolesActiveStatus.` :
+                    `${key}'s role is deemed not active.`
+                );
+                console.log(shuffledDeck.length >= PLAYER_COUNT + 3 ?
+                    'Shuffed deck is full, skipping this loop' :
+                    'Shuffed deck is not full, going on with this loop.'
+                );
+            }
 
-                    if (shuffledDeck.length >= PLAYER_COUNT + 3) continue
+            if (shuffledDeck.length >= PLAYER_COUNT + 3) continue
+                
+            if (teams[deckHashy[key].team] === undefined) {
+                teams[deckHashy[key].team] = {}
+            }
+            teams[deckHashy[key].team][key] = true;
+            
             for (let i = 0; i < deckHashy[key].count; i++) {
                 console.log(
                     shuffledDeck.length >= PLAYER_COUNT + 3 ?
                     'Shuffed deck is full. skipping this loop...'
                     : `Shuffed deck is not full. adding ${i === 0 ? key : 'another ' + key} to shuffed deck...`)
                 if (shuffledDeck.length === PLAYER_COUNT + 3) break;
-                shuffledDeck.push(key)
+                shuffledDeck.push(key);
             };
         };
     };
@@ -98,6 +105,11 @@ async function startGame (playerIps, deckHashy) {
     if (DEBUG_LEVEL > 0) { 
         console.log('rolesActiveStatus:');
         console.log(rolesActiveStatus);
+    }
+
+    if (DEBUG_LEVEL > 0) { 
+        console.log('teams:');
+        console.log(teams);
     }
 
 
@@ -179,6 +191,7 @@ async function startGame (playerIps, deckHashy) {
             }
             playerHashy[playerIps[key]].card = card
             playerHashy[playerIps[key]].role = playerHashy[playerIps[key]].card;
+            playerHashy[playerIps[key]].team = DECK_DATA[card].team;
             playerHashy[playerIps[key]].ip = key;
         }
     }
@@ -296,6 +309,79 @@ async function startGame (playerIps, deckHashy) {
                 const STEP = STEPS[stepIndex]
                 const ws = ipWsMap[playerHashy[playerId].ip]
                 let flavor = STEP.flavor;
+
+                if (STEP.conditions !== undefined ) {
+                    for (let c in STEP.conditions){
+                            console.log(`STEP.conditions[c]: ${STEP.conditions[c]} || STEP.conditions: ${STEP.conditions}`)
+                            result = checkCondition(STEP.conditions[c]);
+                            console.log(`result of condition ${STEP.conditions[c]}: ${result}`)
+                            if (!result) {
+                                console.log(`step condition invalid. skipping...`)
+                                if (stepIndex >= STEPS.length - 1) {
+                                    console.log()
+                                    roleCompletionStatus[deckOrder.indexOf(CARD)] = true;
+                                    console.log(`${CARD} is complete.`);
+                                    return
+                                }
+                                console.log(`current selection: ${JSON.stringify(selection).replaceAll('"',"")}`)
+                                completeStep(++stepIndex)
+                                return
+                            }
+                        }
+                        console.log('step conditions met. running step...')
+                }
+
+                function checkCondition (condition){
+                    switch (condition) {
+                        case 'MULTIPLE_TARGETS': 
+                            if (STEP.target === 'team') {
+                                return Object.keys(teams[deckHashy[CARD].team]).length > 2;
+                            }
+                        break;
+                        case 'SINGULAR_TARGET': 
+                            if (STEP.target === 'team') {
+                                return Object.keys(teams[deckHashy[CARD].team]).length === 2;
+                            }
+                        break;
+                        case 'NO_TEAMMATES': 
+                          return Object.keys(teams[deckHashy[CARD].team]).length === 1;
+                        break;
+                        case 'SELECTION_EXISTS': 
+                            return selection[playerId] !== undefined && selection[playerId].length > 0;
+                        default:
+                            console.log(`defaulted on checking condition ${condition} for ${CARD}`)
+                            break;
+                    }
+                }
+
+                let validFlavor = undefined;
+                if (typeof(flavor) === 'object') {
+                    console.log('flavor is an array')
+                    for (let possibility of flavor) {
+                        let result = true;
+                        console.log(`possibility: ${JSON.stringify(possibility)}`)
+                        for (let c of possibility.conditions){
+                            result = checkCondition(c);
+                            console.log(`result of condition ${c}: ${result}`)
+                            if (!result) {
+                                break;
+                            }
+                        }
+                        if (result) {
+                            console.log('test')
+                            validFlavor = possibility.message
+                            break;
+                        }
+                    }
+                } else {
+                    validFlavor = flavor;
+                }
+                
+                console.log(`flavor: ${JSON.stringify(flavor)}`)
+                console.log(`validFlavor: ${JSON.stringify(validFlavor)}`)
+                // if flavor conditions pass, check and replace variables
+                if (validFlavor !== undefined) {
+                    flavor = validFlavor;
                 if (selection[playerId] !== undefined) {
                 if (playerHashy[selection[playerId][0]] !== undefined) {
                         if (playerHashy[selection[playerId][1]] !== undefined) {
@@ -312,7 +398,28 @@ async function startGame (playerIps, deckHashy) {
                                         playerHashy[selection[playerId][0]].card : centerCards[selection[playerId][0]]}`)
                     }
                 }
+                if (flavor.indexOf('$TEAMMATES') !== -1 && Object.keys(teams[deckHashy[CARD].team]).length > 1) {
+                    console.log('$TEAMMATES detected in flavor')
+                    let teammates = '';
+                    for (let teamRole in teams[deckHashy[CARD].team]) {
+                        console.log(`teamRole: ${teamRole}`)
+                        if (roleHashy[teamRole] === undefined) {
+                            teammates = teammates + teamRole
+                            continue
+                        }
+                        for (let teamPlayer of roleHashy[teamRole]) {
+                            if (teamPlayer === playerId) continue
+                            if (teammates !== '') {
+                                teammates = teammates + ', '
+                            }
+                            teammates = teammates + teamPlayer
+                        }
+                    }
+                    console.log(`teammates: ${teammates}`)
+                    flavor = flavor.replaceAll("$TEAMMATES",`${teammates}`)
+                }
                 ws.send(flavor)
+            }
                 
                 console.log(STEPS[stepIndex])
                 switch (STEP.type) {
@@ -374,6 +481,13 @@ async function startGame (playerIps, deckHashy) {
                                 console.log(`defaulted on target "${STEP.type}.${STEP.target}"`)
                                 break;
                         };
+                        break;
+                    case 'viewPeers':
+                        switch (STEP.target) {
+                                default:
+                                console.log(`defaulted on target "${STEP.type}.${STEP.target}"`)
+                                break;
+                        }
                         break;
                     default: 
                         console.log(`defaulted on step "${STEP.type}"`)
