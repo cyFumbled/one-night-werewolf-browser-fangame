@@ -1,41 +1,54 @@
 {
     "werewolf": {
-        "count":2,
-        "order":9999,
-        "readsCenterCardState": true,
+        "count":1,
+        "order":0,
+        "team":"werewolf",
         "nightSteps":[
-            {"type":"select","target":"anyCenterCard","flavor":"You are a lone wolf.\nSelect Any Center Card to view."},
-            {"type":"viewSelection","flavor":"A $TARGET_CARD."}
+            {"type":"viewPeers","target":"team","flavor":[
+                {"conditions":["MULTIPLE_TARGETS"],"message":"$TEAMMATES are your teammates."},
+                {"conditions":["SINGULAR_TARGET"],"message":"$TEAMMATES is your teammate."}
+            ]},
+            {"type":"select","target":"anyCenter","conditions":["NO_TEAMMATES"],"flavor":"You are a lone wolf.\nSelect Any Center Card to view."},
+            {"type":"viewSelection","conditions":["SELECTION_EXISTS"],"flavor":"A $TARGET_CARD_0."}
         ]
     },
     "robber": {
         "count":1,
-        "order":22,
+        "order":6,
+        "team":"villager",
         "affectsPlayerCardState": true,
         "nightSteps":[
             {"type":"select","target":"anyPlayer","flavor":"Choose a player to view and swap with."},
-            {"type":"viewSelection","flavor":"$TARGET_PLAYER had the $TARGET_CARD card."},
-            {"type":"swapSelfAndSelectionOwner","flavor":"Now you have the $TARGET_CARD card, and $TARGET_PLAYER has your card."}
+            {"type":"viewSelection","flavor":"$TARGET_SOURCE_0 had the $TARGET_CARD_0 card."},
+            {"type":"swapSelection","target":"self","flavor":"Now you have the $TARGET_CARD_0 card, and $TARGET_SOURCE_0 has your card."}
         ]
     },
     "troublemaker": {
         "count":1,
         "order":5,
+        "team":"villager",
         "affectsPlayerCardState": true,
         "nightSteps":[
             {"type":"select","target":"anyPlayer","flavor":"Choose your first player to swap."},
             {"type":"select","target":"anyPlayer","flavor":"Choose your second player to swap."},
-            {"type":"swapSelection","flavor":"Now you have the $TARGET_CARD card, and $TARGET_PLAYER has your card."}
+            {"type":"swapSelection","target":"selection","flavor":"Swapped $TARGET_SOURCE_0 and $TARGET_SOURCE_1"}
         ]
     },
     "seer": {
         "count":1,
         "order":8,
+        "team":"villager",
         "readsPlayerCardState": true,
         "nightSteps":[
-            {"type":"select","target":"anyPlayer","flavor":"Choose a player to view and swap with."},
-            {"type":"viewTargetCards","flavor":"$TARGET_PLAYER had the $TARGET_CARD card."},
-            {"type":"swapSelfAndFirstTarget","flavor":"Now you have the $TARGET_CARD card, and $TARGET_PLAYER has your card."}
+           {"type":"select","target":"anyCard","flavor":"Choose a player or center card to view."},
+            {"type":"viewSelection","flavor":[
+                {"conditions":["PLAYER_SELECTED"],"message":"$TARGET_SOURCE_0's card is $TARGET_CARD_0."},
+                {"conditions":["CENTER_SELECTED"],"message":"$TARGET_SOURCE_0: $TARGET_CARD_0"}
+            ]}
         ]
+    },
+    "villager": {
+        "count":1,
+        "team":"villager"
     }
 }

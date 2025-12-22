@@ -31,6 +31,7 @@ const READY_REQUIRED_RATIO = 1/2;
 const DECK_NAME = 'dev';
 const DECK_DATA = require(`./decks/${DECK_NAME}.json`)
 console.log(`Imported "${DECK_NAME}" deck from /decks.`)
+const DEBUG_ROLE = "troublemaker";
 
 let playerLog = {};
 let activePlayers = {};
@@ -61,7 +62,7 @@ async function startGame (playerIps, deckHashy) {
         console.log(playerIps)
     }
     
-    if (DEBUG_LEVEL > 1)console.log('\n\n# Filling deckOrder hashmap with structure order:role.');
+    if (DEBUG_LEVEL > 1) console.log('\n\n# Filling deckOrder hashmap with structure order:role.');
     for (let key in deckHashy) {
         if (deckHashy.hasOwnProperty(key)) {
             if (DEBUG_LEVEL > 1) console.log(`${key} ${deckHashy[key].order !== undefined ? 'will' : 'will not'} be added to deckOrder`)
@@ -70,9 +71,16 @@ async function startGame (playerIps, deckHashy) {
                 deckHashy[key].count > 0 
                 && deckHashy[key].order !== undefined 
                 && shuffledDeck.length < PLAYER_COUNT + 3;
-
+                
+            if (teams[deckHashy[key].team] === undefined) {
+                if (DEBUG_LEVEL > 1) console.log(`${deckHashy[key].team} team initalized.`)
+                teams[deckHashy[key].team] = {}
+            }
+            teams[deckHashy[key].team][key] = true;
+            if (DEBUG_LEVEL > 1) console.log(`${key} -> ${deckHashy[key].team} team`)
+                
             if (DEBUG_LEVEL > 1){
-                console.log(deckHashy[key].count > 0 
+                console.log('DECK SETUP: ' + deckHashy[key].count > 0 
                     && deckHashy[key].order !== undefined 
                     && shuffledDeck.length < PLAYER_COUNT + 3 ?
                     `Added ${key} to rolesActiveStatus.` :
@@ -85,11 +93,6 @@ async function startGame (playerIps, deckHashy) {
             }
 
             if (shuffledDeck.length >= PLAYER_COUNT + 3) continue
-                
-            if (teams[deckHashy[key].team] === undefined) {
-                teams[deckHashy[key].team] = {}
-            }
-            teams[deckHashy[key].team][key] = true;
             
             for (let i = 0; i < deckHashy[key].count; i++) {
                 console.log(
@@ -170,12 +173,11 @@ async function startGame (playerIps, deckHashy) {
     };
     
     if (DEBUG_LEVEL > 0) {
-        console.log('Shuffled shuffledDeck or whatever:');
+        console.log('Shuffled shuffledDeck:');
         console.log(shuffledDeck);
     }
 
     if (DEBUG_LEVEL > 1) console.log('\n# Filling playerHashy (not a hashmap) with playerNumberId:{ip:ip,card:card,role:role}.');
-    const DEBUG_ROLE = "werewolf";
     let playerHashy = {};
     for (let key in playerIps) {
         if (playerIps.hasOwnProperty(key)) {
@@ -343,9 +345,12 @@ async function startGame (playerIps, deckHashy) {
                                 return Object.keys(teams[deckHashy[CARD].team]).length === 2;
                             }
                         break;
+                        case 'CENTER_SELECTED': 
+                            return centerCards[selection[playerId][0]] !== undefined;
+                        case 'PLAYER_SELECTED': 
+                            return playerHashy[selection[playerId][0]] !== undefined;
                         case 'NO_TEAMMATES': 
                           return Object.keys(teams[deckHashy[CARD].team]).length === 1;
-                        break;
                         case 'SELECTION_EXISTS': 
                             return selection[playerId] !== undefined && selection[playerId].length > 0;
                         default:
@@ -382,22 +387,20 @@ async function startGame (playerIps, deckHashy) {
                 // if flavor conditions pass, check and replace variables
                 if (validFlavor !== undefined) {
                     flavor = validFlavor;
-                if (selection[playerId] !== undefined) {
-                if (playerHashy[selection[playerId][0]] !== undefined) {
-                        if (playerHashy[selection[playerId][1]] !== undefined) {
-                            flavor = flavor.replaceAll("$TARGET_PLAYER_2",`${playerNicknames[playerHashy[selection[playerId][1]].ip]}`)
-                        }
-                        flavor = flavor
-                        .replaceAll("$TARGET_PLAYER_1",`${playerNicknames[playerHashy[selection[playerId][0]].ip]}`)
-                        .replaceAll("$TARGET_CARD",`${centerCards[selection[playerId][0]] === undefined ?
-                                    playerHashy[selection[playerId][0]].card : centerCards[selection[playerId][0]]}`)
-                        
-                        } else if (centerCards[selection[playerId][0]] !== undefined) {
+                    if (flavor.indexOf('$TARGET_') !== -1) {
+                        for (let i in selection[playerId]) {
+                            console.log(`replacing flavor selection #${i}s...`)
                             flavor = flavor
-                            .replaceAll("$TARGET_CARD",`${centerCards[selection[playerId][0]] === undefined ?
-                                        playerHashy[selection[playerId][0]].card : centerCards[selection[playerId][0]]}`)
+                            .replaceAll(`$TARGET_SOURCE_${i}`,`${
+                                playerHashy[selection[playerId][i]] !== undefined ?
+                                playerNicknames[playerHashy[selection[playerId][i]].ip] :
+                                selection[playerId][i]}`)
+                            .replaceAll(`$TARGET_CARD_${i}`,`${
+                                centerCards[selection[playerId][i]] === undefined ?
+                                playerHashy[selection[playerId][i]].card :
+                                centerCards[selection[playerId][i]]}`)
+                        }
                     }
-                }
                 if (flavor.indexOf('$TEAMMATES') !== -1 && Object.keys(teams[deckHashy[CARD].team]).length > 1) {
                     console.log('$TEAMMATES detected in flavor')
                     let teammates = '';
@@ -421,12 +424,11 @@ async function startGame (playerIps, deckHashy) {
                 ws.send(flavor)
             }
                 
-                console.log(STEPS[stepIndex])
+                console.log(JSON.stringify(STEPS[stepIndex]))
                 switch (STEP.type) {
                     case 'select':
                         switch (STEP.target) {
                             case 'anyPlayer':
-                                console.log('selecting anyplayer')
                                     await selectFromTargets(
                                         playerHashy[roleHashy[CARD]].ip,
                                         playerHashy, // only needs keys but as an obj
@@ -442,15 +444,19 @@ async function startGame (playerIps, deckHashy) {
                                         STEP
                                     )
                                 break;
+                            case 'anyCard':
+                                    await selectFromTargets(
+                                        playerHashy[roleHashy[CARD]].ip,
+                                        {...centerCards,...playerHashy},
+                                        ['centerCards','playerCards'],
+                                        STEP
+                                    )
+                                break;
                             default:
                                 console.log(`defaulted on target "${STEP.type}.${STEP.target}"`)
                                 break;
                         }
                         break;
-                        
-                    case 'viewSelection':
-                        console.log('...')
-                    break;
                     case 'swapSelection' :
                         async function awaitDependencies(stateDependencies){
                         const DEPEND_DATA = stateActionDependencies[deckOrder.indexOf(playerHashy[playerId].role)];
@@ -493,7 +499,7 @@ async function startGame (playerIps, deckHashy) {
                         console.log(`defaulted on step "${STEP.type}"`)
                         break;
                 };
-                console.log('step completed')
+                console.log(`step ${stepIndex + 1}/${STEPS.length} completed`)
                 
                 console.log(playerHashy)
                 if (stepIndex >= STEPS.length - 1) {
